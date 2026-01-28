@@ -1,0 +1,13 @@
+.DS_Store
+*.log
+out.csv
+
+# Java / Maven
+target/
+*.jar
+*.class
+
+# IntelliJ IDEA
+.idea/
+*.iml
+EOF

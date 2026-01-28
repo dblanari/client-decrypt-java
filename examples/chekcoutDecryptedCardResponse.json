@@ -1,0 +1,48 @@
+{
+  "card": {
+    "primaryAccountNumber": "5204731600014784",
+    "panExpirationMonth": "12",
+    "panExpirationYear": "2026",
+    "cardholderFullName": "John Doe"
+  },
+  "token": {
+    "paymentToken": "5455030208766644",
+    "tokenExpirationMonth": "12",
+    "tokenExpirationYear": "2026",
+    "paymentAccountReference": "5001a9f027e5629d11e3949a0800b"
+  },
+  "billingAddress": {
+    "name": "John Doe",
+    "line1": "123 Example St",
+    "line2": "Apt 456",
+    "city": "New York City",
+    "state": "NY",
+    "zip": "10011",
+    "countryCode": "US"
+  },
+  "shippingAddress": {
+    "name": "John Doe",
+    "line1": "123 Example St",
+    "line2": "Apt 456",
+    "city": "New York City",
+    "state": "NY",
+    "zip": "10011",
+    "countryCode": "US"
+  },
+  "consumerEmailAddress": "john.doe@example.com",
+  "consumerMobileNumber": {
+    "countryCode": "1",
+    "phoneNumber": "9110908005"
+  },
+  "dynamicData": {
+    "dynamicDataType": "CARD_APPLICATION_CRYPTOGRAM_SHORT_FORM",
+    "dynamicDataValue": "2223344556677889900112233445566778899001122334455667788990345",
+    "dynamicDataExpiration": "1682371012"
+  },
+  "threeDsOutputData": [
+    {
+      "dsTransID": "28d29152-9de4-468d-99b4-58e0536569ba",
+      "authenticationValue": "sjduwxiclotcscsvvseqdlitaamg"
+    }
+  ]
+}
