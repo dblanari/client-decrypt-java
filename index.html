@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- Mastercard SRCi Sandbox SDK -->
+  <script src="https://sandbox.src.mastercard.com/srci/integration/2/lib.js?srcDpaId=cf726a5c-7bd3-478e-9ba7-431545655be5&locale=en_US"></script>
+  <title>Click to Pay - Encrypt + Checkout POC</title>
+</head>
+
+<body style="font-family: Arial, sans-serif;">
+<!-- Top Config Panel -->
+<div id="config" style="margin-bottom:16px; padding:12px; border:1px solid #ccc; border-radius:8px;">
+  <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+    <h3 style="margin:0;">Click to Pay Context</h3>
+    <button id="reinitBtn" style="padding:6px 10px; cursor:pointer;">Re-Init SDK</button>
+  </div>
+
+  <div style="display:grid; grid-template-columns: 220px 1fr; gap:8px 12px; margin-top:12px;">
+
+    <label for="srcDpaId">SRC DPA ID:</label>
+    <input id="srcDpaId" value="a3cd162a-437a-456c-82a1-43666a26a285" style="padding:6px;" />
+
+    <label for="dpaName">DPA Name:</label>
+    <input id="dpaName" value="New Merchant 12314234" style="padding:6px;" />
+
+    <label for="email">Email:</label>
+    <input id="email" value="c2ptest@malinator.com" style="padding:6px;" />
+
+    <label for="countryCode">Country Code:</label>
+    <input id="countryCode" value="373" style="padding:6px;" />
+
+    <label for="phone">Phone:</label>
+    <input id="phone" value="12345678" style="padding:6px;" />
+
+    <label for="firstName">First Name:</label>
+    <input id="firstName" value="TEST" style="padding:6px;" />
+
+    <label for="lastName">Last Name:</label>
+    <input id="lastName" value="USER" style="padding:6px;" />
+
+    <label for="expMonth">Expiry Month (MM):</label>
+    <input id="expMonth" value="12" style="padding:6px;" />
+
+    <label for="expYear">Expiry Year (YY):</label>
+    <input id="expYear" value="26" style="padding:6px;" />
+
+    <label for="cvv">CVV:</label>
+    <input id="cvv" value="123" style="padding:6px;" />
+  </div>
+
+  <div id="initStatus" style="margin-top:10px; font-family: monospace; font-size: 12px;">
+    SDK: (not initialized)
+  </div>
+</div>
+
+<!-- Buttons container -->
+<div id="cardsContainer" style="display:flex; flex-direction:column; gap:10px;"></div>
+
+<script type="module">
+  // ----------------------------
+  // Helpers
+  // ----------------------------
+  function getContext() {
+    return {
+      srcDpaId: document.getElementById("srcDpaId").value.trim(),
+      dpaName: document.getElementById("dpaName").value.trim(),
+      email: document.getElementById("email").value.trim(),
+      phone: document.getElementById("phone").value.trim(),
+      countryCode: document.getElementById("countryCode").value.trim(),
+      firstName: document.getElementById("firstName").value.trim(),
+      lastName: document.getElementById("lastName").value.trim(),
+      expMonth: document.getElementById("expMonth").value.trim(),
+      expYear: document.getElementById("expYear").value.trim(),
+      cvv: document.getElementById("cvv").value.trim(),
+    };
+  }
+
+  function formatSdkError(e) {
+    if (!e) return "unknown error";
+    const parts = [];
+    if (e.reason) parts.push(`reason=${e.reason}`);
+    if (e.message) parts.push(`message=${e.message}`);
+    if (e.details) parts.push(`details=${JSON.stringify(e.details)}`);
+    if (parts.length === 0) parts.push(String(e));
+    return parts.join(" | ");
+  }
+
+  function validateContext(ctx) {
+    if (!ctx.srcDpaId) return "SRC DPA ID is required";
+    if (!ctx.dpaName) return "DPA Name is required";
+    if (!ctx.email) return "Email is required";
+
+    if (!/^\d{2}$/.test(ctx.expMonth)) return "Expiry Month must be MM (2 digits)";
+    if (!/^\d{2}$/.test(ctx.expYear)) return "Expiry Year must be YY (2 digits)";
+    if (!/^\d{3}$/.test(ctx.cvv)) return "CVV must be 3 digits";
+
+    if (!ctx.countryCode || !/^\d+$/.test(ctx.countryCode)) return "Country Code must be digits";
+    if (!ctx.phone || !/^\d+$/.test(ctx.phone)) return "Phone must be digits";
+
+    return null;
+  }
+
+  // ----------------------------
+  // Mastercard SDK objects
+  // ----------------------------
+  let mc = null;
+
+  const complianceSettings = {
+    privacy: {
+      acceptedVersion: "LATEST",
+      latestVersion: "LATEST",
+      latestVersionUri:
+          "https://www.mastercard.com/global/click-to-pay/country-listing/privacy.html",
+    },
+    tnc: {
+      acceptedVersion: "LATEST",
+      latestVersion: "LATEST",
+      latestVersionUri:
+          "https://www.mastercard.com/global/click-to-pay/country-listing/terms.html",
+    },
+  };
+
+  const transactionOptions = {
+    confirmPayment: false,
+    dpaBillingPreference: "NONE",
+    consumerEmailAddressRequested: false,
+    consumerPhoneNumberRequested: false,
+    consumerNameRequested: false,
+    paymentOptions: [{ dynamicDataType: "CARD_APPLICATION_CRYPTOGRAM_SHORT_FORM" }],
+  };
+
+  const initStatusEl = document.getElementById("initStatus");
+
+  async function initSdkFromInputs() {
+    const ctx = getContext();
+    const err = validateContext(ctx);
+    if (err) {
+      initStatusEl.textContent = `SDK: NOT initialized | ERROR: ${err}`;
+      return;
+    }
+
+    initStatusEl.textContent = `SDK: initializing... srcDpaId=${ctx.srcDpaId} dpaName=${ctx.dpaName}`;
+
+    try {
+      // Create a fresh instance every time you re-init
+      window.mcCheckoutService = new MastercardCheckoutServices();
+      mc = window.mcCheckoutService;
+
+      await mc.init({
+        srcDpaId: ctx.srcDpaId,
+        dpaData: { dpaName: ctx.dpaName },
+        checkoutExperience: "WITHIN_CHECKOUT",
+        dpaLocale: "en_US",
+        cardBrands: ["mastercard", "visa", "amex"],
+        dpaTransactionOptions: transactionOptions,
+      });
+
+      // Optional: idLookup to establish consumer identity context
+      await mc.idLookup({ email: ctx.email });
+
+      initStatusEl.textContent = `SDK: READY | srcDpaId=${ctx.srcDpaId} | dpaName=${ctx.dpaName} | email=${ctx.email}`;
+      console.log("SDK initialized:", { srcDpaId: ctx.srcDpaId, dpaName: ctx.dpaName, email: ctx.email });
+    } catch (e) {
+      console.error("SDK init FAILED:", e);
+      initStatusEl.textContent = `SDK: NOT initialized | ERROR: ${formatSdkError(e)}`;
+      mc = null;
+    }
+  }
+
+  document.getElementById("reinitBtn").addEventListener("click", async () => {
+    await initSdkFromInputs();
+  });
+
+
+  const testCards = [
+
+    { pan: "5120350100064537", expMonth: "12", expYear: "29", cvv: "123", label: "MC TOKEN" },
+    { pan: "5120350100064545", expMonth: "12", expYear: "29", cvv: "123", label: "MC TOKEN" },
+    { pan: "5120350100064552", expMonth: "12", expYear: "29", cvv: "123", label: "MC TOKEN" },
+    { pan: "5120350100064560", expMonth: "12", expYear: "29", cvv: "123", label: "MC TOKEN" },
+    { pan: "5120350100064578", expMonth: "12", expYear: "29", cvv: "123", label: "MC TOKEN" },
+
+    // -------------------------
+    // Mastercard – Token Authentication Framework
+    // Any future date + any 3 digits (explicit values provided)
+    // -------------------------
+    { pan: "5453011910000148", expMonth: "12", expYear: "29", cvv: "123", label: "MC TAF AU success" },
+    { pan: "5185600630000142", expMonth: "12", expYear: "29", cvv: "123", label: "MC TAF KW success" },
+    { pan: "5186191950000143", expMonth: "12", expYear: "29", cvv: "123", label: "MC TAF FR success" },
+    { pan: "5454051660000137", expMonth: "12", expYear: "29", cvv: "123", label: "MC TAF BY success" },
+    { pan: "5186161910000137", expMonth: "12", expYear: "29", cvv: "123", label: "MC TAF DE success" },
+    { pan: "5463070700000138", expMonth: "12", expYear: "29", cvv: "123", label: "MC TAF VN success" },
+    { pan: "5186051910000130", expMonth: "12", expYear: "29", cvv: "123", label: "MC TAF BR success / OTP" },
+    { pan: "2223001870064586", expMonth: "12", expYear: "29", cvv: "123", label: "MC TAF US success" },
+    { pan: "5204731620064595", expMonth: "12", expYear: "29", cvv: "123", label: "MC TAF US success" },
+    { pan: "5204731620064587", expMonth: "12", expYear: "29", cvv: "123", label: "MC TAF US success" },
+    { pan: "5120350261420361", expMonth: "12", expYear: "29", cvv: "123", label: "MC TAF GB success (no passkeys)" },
+    { pan: "5120350268376905", expMonth: "12", expYear: "29", cvv: "123", label: "MC TAF GB success (no passkeys)" },
+    { pan: "5120350283765454", expMonth: "12", expYear: "29", cvv: "123", label: "MC TAF GB success (no passkeys)" },
+    { pan: "5506900487058777", expMonth: "12", expYear: "29", cvv: "123", label: "MC TAF US FAIL" },
+    { pan: "5506900487741018", expMonth: "12", expYear: "29", cvv: "123", label: "MC TAF US FAIL" },
+
+    // -------------------------
+    // Visa Test Cards (as provided)
+    // -------------------------
+    { pan: "4622943123113624", expMonth: "12", expYear: "27", cvv: "218", label: "VISA" },
+    { pan: "4622943123113632", expMonth: "12", expYear: "27", cvv: "839", label: "VISA" },
+    { pan: "4622943123113640", expMonth: "12", expYear: "27", cvv: "185", label: "VISA" },
+    { pan: "4622943123113657", expMonth: "12", expYear: "27", cvv: "830", label: "VISA" },
+    { pan: "4622943123113665", expMonth: "12", expYear: "27", cvv: "681", label: "VISA" },
+    { pan: "4622943123113673", expMonth: "12", expYear: "27", cvv: "488", label: "VISA" },
+    { pan: "4622943123113681", expMonth: "12", expYear: "27", cvv: "797", label: "VISA" },
+    { pan: "4622943123113699", expMonth: "12", expYear: "27", cvv: "072", label: "VISA" },
+    { pan: "4622943123113707", expMonth: "12", expYear: "27", cvv: "055", label: "VISA" },
+    { pan: "4622943123113715", expMonth: "12", expYear: "27", cvv: "058", label: "VISA" },
+    { pan: "4622943123113723", expMonth: "12", expYear: "27", cvv: "929", label: "VISA" },
+    { pan: "4622943123113731", expMonth: "12", expYear: "27", cvv: "217", label: "VISA" },
+    { pan: "4622943123113749", expMonth: "12", expYear: "27", cvv: "242", label: "VISA" },
+    { pan: "4622943123113756", expMonth: "12", expYear: "27", cvv: "081", label: "VISA" },
+    { pan: "4622943123113764", expMonth: "12", expYear: "27", cvv: "993", label: "VISA" },
+    { pan: "4622943123113772", expMonth: "12", expYear: "27", cvv: "916", label: "VISA" },
+    { pan: "4622943123113780", expMonth: "12", expYear: "27", cvv: "398", label: "VISA" },
+    { pan: "4622943123113798", expMonth: "12", expYear: "27", cvv: "529", label: "VISA" },
+    { pan: "4622943123113806", expMonth: "12", expYear: "27", cvv: "007", label: "VISA" },
+    { pan: "4622943123113814", expMonth: "12", expYear: "27", cvv: "662", label: "VISA" },
+    { pan: "4622943123113822", expMonth: "12", expYear: "27", cvv: "828", label: "VISA" },
+    { pan: "4622943123113830", expMonth: "12", expYear: "27", cvv: "659", label: "VISA" },
+    { pan: "4622943123113848", expMonth: "12", expYear: "27", cvv: "766", label: "VISA" },
+    { pan: "373708623186001", expMonth: "12", expYear: "28", cvv: "7777", label: "AMEX" },
+
+    { pan: "372280864074008", expMonth: "12", expYear: "28", cvv: "7777", label: "AMEX" },
+    { pan: "377222581193005", expMonth: "12", expYear: "28", cvv: "7777", label: "AMEX" },
+    { pan: "372399427875006", expMonth: "12", expYear: "28", cvv: "7777", label: "AMEX" },
+    { pan: "371316662951004", expMonth: "12", expYear: "28", cvv: "7777", label: "AMEX" }
+  ];
+
+
+  const cardsContainer = document.getElementById("cardsContainer");
+
+  // --- create table + header ---
+  const table = document.createElement("table");
+  table.style.width = "100%";
+  table.style.borderCollapse = "collapse";
+
+  const thead = document.createElement("thead");
+  thead.innerHTML = `
+  <tr>
+    <th style="text-align:left; padding:8px; border-bottom:1px solid #ccc;">Brand</th>
+    <th style="text-align:left; padding:8px; border-bottom:1px solid #ccc;">PAN</th>
+    <th style="text-align:left; padding:8px; border-bottom:1px solid #ccc;">Exp</th>
+    <th style="text-align:left; padding:8px; border-bottom:1px solid #ccc;">CVV</th>
+    <th style="text-align:left; padding:8px; border-bottom:1px solid #ccc;">Action</th>
+    <th style="text-align:left; padding:8px; border-bottom:1px solid #ccc;">Result</th>
+  </tr>
+`;
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+  table.appendChild(tbody);
+
+  // attach to page
+  cardsContainer.appendChild(table);
+
+  function createRow(card) {
+    // ---- table row instead of div ----
+    const tr = document.createElement("tr");
+
+    const brandLabel =
+        String(card.pan).startsWith("5") ? "MasterCard" :
+            String(card.pan).startsWith("4") ? "Visa" :
+                "Amex";
+
+    function tdText(text) {
+      const td = document.createElement("td");
+      td.style.padding = "8px";
+      td.style.borderBottom = "1px solid #eee";
+      td.textContent = text;
+      return td;
+    }
+
+    // columns: Brand / PAN / Exp / CVV
+    tr.appendChild(tdText(brandLabel));
+    tr.appendChild(tdText(card.pan));
+    tr.appendChild(tdText(`${card.expMonth}/${card.expYear}`));
+    tr.appendChild(tdText(String(card.cvv)));
+
+    // Action column (button)
+    const actionTd = document.createElement("td");
+    actionTd.style.padding = "8px";
+    actionTd.style.borderBottom = "1px solid #eee";
+
+    const button = document.createElement("button");
+    button.textContent = "Checkout";
+    button.style.padding = "6px 10px";
+    button.style.cursor = "pointer";
+    actionTd.appendChild(button);
+    tr.appendChild(actionTd);
+
+    // Result column (status)
+    const resultTd = document.createElement("td");
+    resultTd.style.padding = "8px";
+    resultTd.style.borderBottom = "1px solid #eee";
+
+    const status = document.createElement("span");
+    status.textContent = "merchant-transaction-id: (none yet)";
+    status.style.fontFamily = "monospace";
+    status.style.fontSize = "12px";
+    resultTd.appendChild(status);
+    tr.appendChild(resultTd);
+
+    // ---- keep your existing click handler logic (unchanged) ----
+    button.addEventListener("click", async () => {
+      const ctx = getContext();
+      const err = validateContext(ctx);
+      if (err) {
+        status.textContent = `ERROR: ${err}`;
+        return;
+      }
+
+      if (!mc) {
+        status.textContent = "ERROR: SDK not initialized. Click 'Re-Init SDK' first.";
+        return;
+      }
+
+      button.disabled = true;
+      status.textContent = "Running flow...";
+
+      let payload;
+      try {
+        const req = {
+          primaryAccountNumber: String(card.pan).trim(),
+          panExpirationMonth: card.expMonth,
+          panExpirationYear: card.expYear,
+          cardSecurityCode: card.cvv,
+          cardholderFirstName: ctx.firstName,
+          cardholderLastName: ctx.lastName,
+        };
+
+        console.log("encryptCard request:", req);
+        payload = await mc.encryptCard(req);
+        console.log("encryptCard OK:", payload);
+      } catch (e) {
+        console.error("encryptCard FAILED:", e);
+        status.textContent = `encryptCard ERROR: ${formatSdkError(e)}`;
+        button.disabled = false;
+        return;
+      }
+
+      try {
+        const ref = window.open("", "_blank", "width=600,height=600");
+
+        const firstDigit = String(card.pan).charAt(0);
+        const guessedBrand =
+            firstDigit === "5" ? "mastercard" :
+                firstDigit === "4" ? "visa" :
+                    "amex";
+
+        if (!ref) {
+          throw new Error("Popup blocked or windowRef is null");
+        }
+
+        const res = await mc.checkoutWithNewCard({
+          cardBrand: guessedBrand,
+          encryptedCard: payload.encryptedCard,
+          rememberMe: false,
+          windowRef: ref,
+          consumer: {
+            emailAddress: ctx.email,
+            mobileNumber: { countryCode: ctx.countryCode, phoneNumber: ctx.phone },
+          },
+          dpaTransactionOptions: transactionOptions,
+          complianceSettings,
+        });
+
+        const merchantTxnId =
+            res?.headers?.["merchant-transaction-id"] ??
+            res?.headers?.["Merchant-Transaction-Id"] ??
+            "(not returned)";
+
+        status.textContent = `merchant-transaction-id: ${merchantTxnId}`;
+        console.log("checkout OK:", res);
+      } catch (e) {
+        console.error("checkoutWithNewCard FAILED:", e);
+        status.textContent = `checkout ERROR: ${formatSdkError(e)}`;
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    return tr;
+  }
+
+  // render rows
+  for (const card of testCards) {
+    tbody.appendChild(createRow(card));
+  }
+
+  // ----------------------------
+  // Initial init on page load
+  // ----------------------------
+  await initSdkFromInputs();
+</script>
+</body>
+</html>

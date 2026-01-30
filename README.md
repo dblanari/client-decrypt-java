@@ -12,6 +12,7 @@ Command-line tool that calls the Click to Pay Checkout API (`/checkout`), decryp
 ## Project Layout
 - `src/main/java` — CLI application and API/decryption logic
 - `config/example.properties` — configuration template
+- `config/encrypt.properties` — payload encryption settings for Method 2 CSR certificate
 - `examples/input.csv` — sample input format
 - `checkout-and-confirmations-api-swagger.yaml` — API contract
 
@@ -24,10 +25,11 @@ See: https://developer.mastercard.com/unified-checkout-solutions/documentation/a
 
 ## CSV Format
 Input CSV must include:
-- `X-Src-Cx-Flow-Id` (can be blank)
+- `cardNumber`
 - `merchantTransactionId`
 
 Output CSV columns:
+- `cardNumber`
 - `merchantTransactionId`
 - `cardPrimaryAccountNumber`
 - `cardPanExpirationMonth`
@@ -40,6 +42,8 @@ Output CSV columns:
 - `dynamicDataType`
 - `dynamicDataValue`
 - `dynamicDataExpiration`
+
+Test card list: https://developer.mastercard.com/unified-checkout-solutions/documentation/testing/test_cases/click_to_pay_case/#test-cards
 
 ## Build
 ```bash
@@ -66,22 +70,53 @@ java -cp target/client-decrypt-java-1.0.0-SNAPSHOT-shaded.jar \
   --output examples/encryptedPayload.json
 ```
 
-## Method 2: Manual CSR Upload (Key Generation Steps)
-Use Method 2 (manual CSR upload) in the Mastercard Developers Portal. Generate a key and CSR locally, upload the CSR, then download the encryption certificate and set `encryptionCertificatePath`.
+## Encrypt Payload with Method 2 CSR (encrypt.properties)
+Use the public encryption certificate you downloaded after uploading your CSR (Method 2) and configure `config/encrypt.properties`. Relative paths now resolve from the project root, so the defaults point to `examples/chekcoutDecryptedCardResponse.json` and `examples/encryptedPayload.json` even when `encrypt.properties` lives in `config/`.
 
-OpenSSL example:
+One-command run (after packaging) using the defaults from `encrypt.properties`:
 ```bash
-openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out encryption.key
-openssl req -new -key encryption.key -out encryption.csr -subj "/C=US/ST=State/L=City/O=Example/OU=Payments/CN=example.com"
+java -cp target/client-decrypt-java-1.0.0-SNAPSHOT-shaded.jar \
+  com.example.encrypt.EncryptPayloadApp \
+  --config config/encrypt.properties
+```
+
+Override input/output when needed:
+```bash
+java -cp target/client-decrypt-java-1.0.0-SNAPSHOT-shaded.jar \
+  com.example.encrypt.EncryptPayloadApp \
+  --config config/encrypt.properties \
+  --input examples/chekcoutDecryptedCardResponse.json \
+  --output examples/encryptedPayload.json
+```
+
+### Demo keys already generated
+A demo RSA key, CSR, and self-signed certificate were generated under `config/keys/`:
+- `config/keys/demo-encryption.key`
+- `config/keys/demo-encryption.csr`
+- `config/keys/demo-encryption.crt`
+
+The default `config/encrypt.properties` points to the demo certificate.
+
+### Method 2: Manual CSR Upload (Key Generation Steps)
+Use Method 2 (manual CSR upload) in the Mastercard Developers Portal. Generate a key and CSR locally under `config/keys/`, upload the CSR, then download the encryption certificate and set `encryptionCertificatePath`.
+
+OpenSSL example (writes to `config/keys/`):
+```bash
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out config/keys/method2-encryption.key
+openssl req -new -key config/keys/method2-encryption.key -out config/keys/method2-encryption.csr \
+  -subj "/C=US/ST=State/L=City/O=Example/OU=Payments/CN=example.com"
+# After portal approval, place the downloaded cert at:
+# config/keys/method2-encryption.crt and set encryptionCertificatePath accordingly
 ```
 
 Java keytool example:
 ```bash
 keytool -genkeypair -alias encryption -keyalg RSA -keysize 2048 \
-  -keystore encryption-keystore.p12 -storetype PKCS12 -storepass changeit \
+  -keystore config/keys/method2-encryption-keystore.p12 -storetype PKCS12 -storepass changeit \
   -dname "CN=example.com, OU=Payments, O=Example, L=City, ST=State, C=US"
-keytool -certreq -alias encryption -keystore encryption-keystore.p12 \
-  -storepass changeit -file encryption.csr
+keytool -certreq -alias encryption -keystore config/keys/method2-encryption-keystore.p12 \
+  -storepass changeit -file config/keys/method2-encryption.csr
+# Downloaded cert can be imported or referenced directly; set encryptionCertificatePath accordingly
 ```
 
 After downloading the public encryption certificate, update `encryptionCertificatePath` in your config.

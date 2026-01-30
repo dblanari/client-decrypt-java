@@ -16,7 +16,7 @@ import java.util.concurrent.Callable;
 
 @CommandLine.Command(name = "client-decrypt", mixinStandardHelpOptions = true, description = "Fetch and decrypt Click to Pay checkout payloads.")
 public final class ClientDecryptApp implements Callable<Integer> {
-    @CommandLine.Option(names = "--input", required = true, description = "Input CSV file with X-Src-Cx-Flow-Id and merchantTransactionId columns.")
+    @CommandLine.Option(names = "--input", required = true, description = "Input CSV file with cardNumber and merchantTransactionId columns.")
     private Path inputCsv;
 
     @CommandLine.Option(names = "--output", required = true, description = "Output CSV file path.")
@@ -44,6 +44,7 @@ public final class ClientDecryptApp implements Callable<Integer> {
             .build();
         CSVFormat outputFormat = CSVFormat.DEFAULT.builder()
             .setHeader(
+                "cardNumber",
                 "merchantTransactionId",
                 "cardPrimaryAccountNumber",
                 "cardPanExpirationMonth",
@@ -65,18 +66,19 @@ public final class ClientDecryptApp implements Callable<Integer> {
              CSVPrinter printer = new CSVPrinter(writer, outputFormat)) {
 
             for (CSVRecord record : parser) {
-                String flowId = value(record, "X-Src-Cx-Flow-Id");
+                String cardNumber = value(record, "cardNumber");
                 String merchantTransactionId = value(record, "merchantTransactionId");
                 if (merchantTransactionId == null || merchantTransactionId.isBlank()) {
-                    printer.printRecord(blankRecord(merchantTransactionId));
+                    printer.printRecord(blankRecord(cardNumber, merchantTransactionId));
                     System.err.println("Skipping row with missing merchantTransactionId.");
                     continue;
                 }
 
                 try {
-                    String encryptedPayload = checkoutClient.checkoutEncryptedPayload(flowId, merchantTransactionId);
+                    String encryptedPayload = checkoutClient.checkoutEncryptedPayload(merchantTransactionId);
                     PayloadDecryptor.DecryptedResult decrypted = decryptor.decrypt(encryptedPayload);
                     printer.printRecord(
+                        nullToEmpty(cardNumber),
                         nullToEmpty(merchantTransactionId),
                         nullToEmpty(decrypted.cardPrimaryAccountNumber()),
                         nullToEmpty(decrypted.cardPanExpirationMonth()),
@@ -91,7 +93,7 @@ public final class ClientDecryptApp implements Callable<Integer> {
                         nullToEmpty(decrypted.dynamicDataExpiration())
                     );
                 } catch (Exception ex) {
-                    printer.printRecord(blankRecord(merchantTransactionId));
+                    printer.printRecord(blankRecord(cardNumber, merchantTransactionId));
                     System.err.println("Failed to process transaction " + merchantTransactionId + ": " + ex.getMessage());
                 }
             }
@@ -115,8 +117,9 @@ public final class ClientDecryptApp implements Callable<Integer> {
         return value == null ? "" : value;
     }
 
-    private static Object[] blankRecord(String merchantTransactionId) {
+    private static Object[] blankRecord(String cardNumber, String merchantTransactionId) {
         return new Object[] {
+            nullToEmpty(cardNumber),
             nullToEmpty(merchantTransactionId),
             "", "", "", "", "", "", "", "", "", "", ""
         };

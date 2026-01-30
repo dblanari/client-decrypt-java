@@ -1,6 +1,5 @@
 .DS_Store
 *.log
-out.csv
 
 # Java / Maven
 target/

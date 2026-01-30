@@ -38,7 +38,7 @@ final class CheckoutClient {
         this.organizationId = config.organizationId();
     }
 
-    String checkoutEncryptedPayload(String flowId, String merchantTransactionId) throws IOException, InterruptedException {
+    String checkoutEncryptedPayload(String merchantTransactionId) throws IOException, InterruptedException {
         URI uri = URI.create(baseUrl + "/checkout");
         String payload = buildCheckoutPayload(merchantTransactionId);
         String authHeader = OAuth.getAuthorizationHeader(
@@ -54,10 +54,6 @@ final class CheckoutClient {
             .header("Content-Type", "application/json")
             .header("Authorization", authHeader)
             .POST(HttpRequest.BodyPublishers.ofString(payload));
-
-        if (flowId != null && !flowId.isBlank()) {
-            requestBuilder.header("X-Src-Cx-Flow-Id", flowId);
-        }
 
         HttpResponse<String> response = httpClient.send(requestBuilder.build(), HttpResponse.BodyHandlers.ofString());
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
