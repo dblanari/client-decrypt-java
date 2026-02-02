@@ -27,7 +27,7 @@ final class CheckoutClient {
     CheckoutClient(ObjectMapper mapper, AppConfig config) throws Exception {
         this.mapper = mapper;
         this.httpClient = HttpClient.newHttpClient();
-        this.baseUrl = AppConfig.normalizeBaseUrl(config.baseUrl());
+        this.baseUrl = AppConfig.normalizeBaseUrl(config.useMock() ? config.mockBaseUrl() : config.baseUrl());
         this.consumerKey = config.consumerKey();
         this.signingKey = AuthenticationUtils.loadSigningKey(
             config.signingKeyPath(),
