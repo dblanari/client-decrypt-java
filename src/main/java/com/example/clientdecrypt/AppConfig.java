@@ -21,6 +21,8 @@ final class AppConfig {
     private final String decryptionKeyAlias;
     private final String decryptionKeyPassword;
     private final String decryptionKeyPlainPath;
+    private final String environment;
+    private final String mockBaseUrl;
 
     private AppConfig(Properties properties) {
         this.baseUrl = get(properties, "baseUrl", "https://sandbox.api.mastercard.com/srci/api");
@@ -36,6 +38,8 @@ final class AppConfig {
         this.decryptionKeyAlias = get(properties, "decryptionKeyAlias", null);
         this.decryptionKeyPassword = get(properties, "decryptionKeyPassword", null);
         this.decryptionKeyPlainPath = get(properties, "decryptionKeyPlainPath", null);
+        this.environment = get(properties, "environment", "mock").toLowerCase();
+        this.mockBaseUrl = get(properties, "mockBaseUrl", "http://localhost:8081");
 
         if (srcDpaId != null && organizationId != null) {
             throw new IllegalArgumentException("Provide only one of srcDpaId or organizationId.");
@@ -51,6 +55,9 @@ final class AppConfig {
         if (hasPkcs12) {
             require(properties, "decryptionKeyAlias");
             require(properties, "decryptionKeyPassword");
+        }
+        if (!environment.equals("sandbox") && !environment.equals("mock")) {
+            throw new IllegalArgumentException("environment must be sandbox or mock.");
         }
     }
 
@@ -112,6 +119,14 @@ final class AppConfig {
 
     String decryptionKeyPlainPath() {
         return decryptionKeyPlainPath;
+    }
+
+    boolean useMock() {
+        return "mock".equals(environment);
+    }
+
+    String mockBaseUrl() {
+        return mockBaseUrl;
     }
 
     private static String get(Properties properties, String key, String defaultValue) {
